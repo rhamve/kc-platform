@@ -1,0 +1,14 @@
+# local secrets / state
+*.env
+.env*
+secrets/
+*.pem
+*.key
+kubeconfig*
+# build output
+target/
+build/
+node_modules/
+.DS_Store
+.idea/
+.vscode/
