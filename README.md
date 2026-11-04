@@ -46,10 +46,11 @@ Related labs (left untouched – use them for MFA / TOTP and other feature exper
 | **Configuration** | Realms, clients, mappers, IdPs, flows, orgs | Shared database | keycloak-config-cli (Admin REST API) via Argo CD | Ring by ring (all pods of a ring see it at once) |
 
 ## Phases (tick off as we go)
-- [ ] **0. Repo + kind cluster** – this commit
-- [ ] **1. Custom Keycloak image** – Dockerfile + theme + GitHub Actions (multi-arch → GHCR)
+- [x] **0. Repo + kind cluster** – steps below
+- [ ] **1. Custom Keycloak image** – Dockerfile + theme + GitHub Actions (multi-arch → GHCR) – steps in [`image/README.md`](image/README.md)
 - [ ] **2. GitOps base** – Argo CD, app-of-apps, Keycloak Operator, CloudNativePG, ring0 Helm chart
 - [ ] **3. Traffic** – Envoy Gateway, login/admin hostnames, TLS
+- [ ] **3b. Public access** – Cloudflare Tunnel (`cloudflared` in the cluster) + Cloudflare Access on the admin hostname
 - [ ] **4. Config as code** – realm in Git, keycloak-config-cli Job
 - [ ] **5. Synthetic logins** – smoke-test Job as Argo CD PostSync gate
 - [ ] **6. BFF** – Spring Boot OAuth2 client + Redis sessions
@@ -76,6 +77,37 @@ gh repo create kc-platform --public --source . --push
 Expected: 3 nodes `Ready`; the two workers show zones `az-a` and `az-b`.
 
 Delete everything: `./scripts/99-delete-cluster.sh`
+
+## When can I log in to the Keycloak admin console?
+| Phase | Where | Login |
+|---|---|---|
+| 1 | Local image test – http://localhost:8090/admin | admin / admin (local only) |
+| 2 | kind, via `kubectl port-forward` | operator-generated admin secret |
+| 3 | kind, via Gateway – http://admin.ring0.localtest.me:8880 | your admin user |
+| 3b | Internet – https://admin.ring0.kc.&lt;your-domain&gt; | your admin user + Cloudflare Access |
+
+## Phase 3b – public access with Cloudflare Tunnel (plan)
+Namespaces aren't reachable from outside; **hostnames** are. Each hostname goes through the tunnel to the Gateway,
+which routes to a Service in a namespace:
+```
+https://admin.ring0.kc.<domain> → Cloudflare (Access login) → tunnel → Envoy Gateway → ring0/keycloak-admin
+https://login.ring0.kc.<domain> → Cloudflare               → tunnel → Envoy Gateway → ring0/keycloak-engine
+```
+Steps:
+1. Cloudflare dashboard → **Zero Trust → Networks → Tunnels → Create tunnel** (cloudflared) → copy the **tunnel token**
+2. Kubernetes Secret with the token; `cloudflared` Deployment in namespace `cloudflared` (managed by Argo CD).
+   Outbound connection only – no router ports opened
+3. Tunnel **Public hostnames**: `admin.ring0.kc.<domain>` and `login.ring0.kc.<domain>` → the Envoy Gateway Service
+4. Keycloak options: `hostname=https://login.ring0.kc.<domain>`, `hostname-admin=https://admin.ring0.kc.<domain>`,
+   `proxy-headers=xforwarded` (Cloudflare terminates TLS)
+5. **Cloudflare Access** application on the admin hostname: allow only your email (one-time code)
+
+Before exposing anything:
+- Replace `admin/admin` with a real admin user, strong password + **TOTP**
+- `/admin` only on the admin hostname (Gateway route blocks it on login hostnames)
+- Realm → Security defenses → **Brute force detection ON**
+- Run the tunnel only while practising: `kubectl -n cloudflared scale deploy cloudflared --replicas=0`
+- The Mac must be awake for any of this to work
 
 ## Repo layout
 ```
@@ -110,6 +142,11 @@ Tooling
 - CloudNativePG: https://cloudnative-pg.io/documentation/
 - Envoy Gateway (Gateway API): https://gateway.envoyproxy.io/docs/
 - keycloak-config-cli: https://github.com/adorsys/keycloak-config-cli
+- Cloudflare Tunnel: https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/
+- Cloudflare Access: https://developers.cloudflare.com/cloudflare-one/applications/
+- Docker build-push action: https://github.com/docker/build-push-action
+- Keycloak – containers / optimized image: https://www.keycloak.org/server/containers
+- Keycloak – themes: https://www.keycloak.org/ui-customization/themes
 
 Multi-tenancy
 - Keycloak Organizations: https://www.keycloak.org/docs/latest/server_admin/#_managing_organizations
