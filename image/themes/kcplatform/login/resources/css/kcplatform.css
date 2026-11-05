@@ -1,0 +1,19 @@
+/* kc-platform branding on top of keycloak.v2 (PatternFly v5).
+   The parent stylesheet exposes CSS variables – we only override those plus a few colours. */
+:root {
+    --keycloak-logo-url: url('../img/kcplatform-logo.svg');
+    --keycloak-logo-height: 64px;
+    --keycloak-logo-width: 320px;
+    --keycloak-card-top-color: #0e7c66;
+
+    /* PatternFly primary colour: buttons, links, focus */
+    --pf-v5-global--primary-color--100: #0e7c66;
+    --pf-v5-global--primary-color--200: #0a5c4c;
+    --pf-v5-global--link--Color: #0e7c66;
+    --pf-v5-global--link--Color--hover: #0a5c4c;
+}
+
+/* Page background: replace the Keycloak background image with a gradient */
+.login-pf body {
+    background: linear-gradient(135deg, #0b3d4a 0%, #0e7c66 100%) no-repeat fixed;
+}

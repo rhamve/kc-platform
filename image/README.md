@@ -85,9 +85,67 @@ a new image tag appears. In Phase 2 Argo CD deploys new tags; in Phase 8 we roll
 Change `ARG KC_VERSION=` in the Dockerfile (check the newest 26.7.x on quay.io/keycloak/keycloak first).
 Patch (26.7.x → 26.7.y): rolling update. Minor/major (26.7 → 26.8 / 27): blue/green (Phase 8).
 
-## Phase 1b (next) – CSS and logo
-Inspect the parent `keycloak.v2` login theme inside the image, then add `css/` and `img/` resources and
-`styles=` in `theme.properties` without breaking the parent's styles.
+## Phase 1b – CSS and logo
+
+### How the parent theme is built (what we extend)
+Parent `keycloak.v2` login theme (Keycloak 26.7.3 source:
+https://github.com/keycloak/keycloak/tree/26.7.3/themes/src/main/resources/theme/keycloak.v2/login):
+- `theme.properties`: `parent=base`, `styles=css/styles.css`, `stylesCommon=` PatternFly v5, `darkMode=true`
+- `resources/css/styles.css` exposes **CSS variables** we can override:
+  `--keycloak-logo-url`, `--keycloak-logo-height`, `--keycloak-logo-width`, `--keycloak-card-top-color`,
+  `--keycloak-bg-logo-url`
+- The logo is drawn by CSS on `<div class="kc-logo-text">` inside the header; the header text comes from
+  the message `loginTitleHtml` (default `{0}` = realm display name)
+
+Rules that keep the parent working:
+- In `styles=` list the **parent's file first**, then ours: `styles=css/styles.css css/kcplatform.css`
+  (Keycloak looks up each file in our theme, then the parent)
+- Override **variables and colours**, don't copy the parent's CSS or templates (they change between versions)
+
+### Files
+```
+themes/kcplatform/login/
+  theme.properties                      parent=keycloak.v2, styles=css/styles.css css/kcplatform.css, darkMode=false
+  messages/messages_en.properties       loginAccountTitle + loginTitleHtml (logo div for every realm)
+  resources/css/kcplatform.css          logo variables, card top colour, PatternFly primary colour, gradient background
+  resources/img/kcplatform-logo.svg     original lab logo (shield + "KC Platform")
+```
+
+### Steps
+1. Test locally:
+   ```
+   ./scripts/10-test-image-local.sh
+   ```
+2. http://localhost:8090/admin → admin / admin → **master → Realm settings → Themes → Login theme = kcplatform** → Save
+3. Private window → http://localhost:8090/admin → expect:
+   - KC Platform logo above the card, green top border on the card
+   - green **Sign In** button and links, gradient background
+   - heading "Welcome to KC Platform"
+4. Tweak colours in `kcplatform.css` → re-run the script (it rebuilds the image) → hard refresh (Cmd+Shift+R)
+5. Commit and push → GitHub Actions builds a new image tag:
+   ```
+   git add image && git commit -m "Phase 1b: login theme CSS and logo" && git push && gh run watch
+   ```
+
+Tip – browser DevTools (Cmd+Option+I) → Elements → select the header or button → see which CSS variable or class
+applies, then override it in `kcplatform.css`.
+
+### Troubleshooting
+| Symptom | Check |
+|---|---|
+| Page unstyled (plain HTML) | `styles=` must still include `css/styles.css` before `css/kcplatform.css` |
+| Logo missing, text "KC PLATFORM" shown | SVG path: `resources/img/kcplatform-logo.svg`; URL in CSS is `../img/...` |
+| Old look after rebuild | Browser cache – hard refresh or private window |
+| Changes don't appear at all | Realm's Login theme still `keycloak.v2` – select `kcplatform` |
+
+## Dependabot (keeps GitHub Actions versions current)
+`dependabot.yml` is delivered in `.github-staging` (remote tools can't write into `.github`):
+```
+mv .github-staging/dependabot.yml .github/dependabot.yml && rm -rf .github-staging
+git add .github/dependabot.yml && git commit -m "ci: dependabot for GitHub Actions" && git push
+```
+Every Monday it opens one grouped PR bumping action versions (clears the Node.js 20 warnings). The PR runs the
+image workflow in build-only mode; merge when green. The Keycloak version is bumped by hand (`ARG KC_VERSION`).
 
 ## Troubleshooting
 | Symptom | Check |
