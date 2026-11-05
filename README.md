@@ -47,7 +47,8 @@ Related labs (left untouched – use them for MFA / TOTP and other feature exper
 
 ## Phases (tick off as we go)
 - [x] **0. Repo + kind cluster** – steps below
-- [ ] **1. Custom Keycloak image** – Dockerfile + theme + GitHub Actions (multi-arch → GHCR) – steps in [`image/README.md`](image/README.md)
+- [x] **1. Custom Keycloak image** – Dockerfile + theme + GitHub Actions (multi-arch → GHCR) – steps in [`image/README.md`](image/README.md)
+  (first build ✓ in 3m; remaining check: anonymous `docker pull` of the image)
 - [ ] **2. GitOps base** – Argo CD, app-of-apps, Keycloak Operator, CloudNativePG, ring0 Helm chart
 - [ ] **3. Traffic** – Envoy Gateway, login/admin hostnames, TLS
 - [ ] **3b. Public access** – Cloudflare Tunnel (`cloudflared` in the cluster) + Cloudflare Access on the admin hostname
@@ -77,6 +78,41 @@ gh repo create kc-platform --public --source . --push
 Expected: 3 nodes `Ready`; the two workers show zones `az-a` and `az-b`.
 
 Delete everything: `./scripts/99-delete-cluster.sh`
+
+## Stop and start (pausing the lab between sessions)
+
+**Stop (end of the day):**
+```
+docker rm -f kc-image-test                                      # local image test container (Phase 1)
+docker stop kc-lab-control-plane kc-lab-worker kc-lab-worker2   # pause the kind cluster – keeps everything
+cd ~/Documents/arutperumjothi/learn/kc && docker compose stop && docker compose -f docker-compose.sp.yml stop   # Compose labs, if running
+```
+Then Docker Desktop can be quit.
+
+**Start (next session):**
+```
+# open Docker Desktop first
+docker start kc-lab-control-plane kc-lab-worker kc-lab-worker2
+kubectl config use-context kind-kc-lab
+kubectl wait --for=condition=Ready nodes --all --timeout=180s
+kubectl get nodes
+cd ~/Documents/arutperumjothi/learn/kc-platform && git pull && gh run list
+```
+
+**If the cluster misbehaves after a restart** (kind sometimes does): rebuild it in about a minute –
+`./scripts/99-delete-cluster.sh && ./scripts/00-create-cluster.sh`. From Phase 2 on, Argo CD rebuilds everything
+else from Git.
+
+**Where did I leave off?** Check the phase checklist above, then carry on in the same Claude chat
+("continue Phase N").
+
+**Useful GitHub CLI commands:**
+```
+gh run watch              # live view of the current Actions run (✓ done, * running, X failed)
+gh run list               # recent runs
+gh run view --log-failed  # only the failing step's log
+gh run view --web         # open the run in the browser
+```
 
 ## When can I log in to the Keycloak admin console?
 | Phase | Where | Login |
