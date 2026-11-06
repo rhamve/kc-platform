@@ -1,0 +1,18 @@
+# Dependabot: keep GitHub Actions versions current (fixes the "Node.js 20 is deprecated" warnings over time).
+# Opens one grouped pull request per week; the PR triggers the image workflow in build-only mode.
+# Note: the Keycloak base image version is NOT tracked here – the Dockerfile uses an ARG in FROM,
+# which Dependabot can't update. Bump ARG KC_VERSION deliberately (patch = rolling, minor/major = blue/green).
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      timezone: Australia/Sydney
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    labels: ["dependencies", "ci"]
