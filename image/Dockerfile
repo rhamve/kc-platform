@@ -10,7 +10,9 @@ ENV KC_DB=postgres \
     KC_HEALTH_ENABLED=true \
     KC_METRICS_ENABLED=true
 WORKDIR /opt/keycloak
-COPY themes/ /opt/keycloak/themes/
+# --chown: Keycloak runs as user 'keycloak' (uid 1000); owning the files guarantees it can read the theme
+# even if the files on disk were created with restrictive permissions (e.g. 600).
+COPY --chown=keycloak:root themes/ /opt/keycloak/themes/
 RUN /opt/keycloak/bin/kc.sh build
 
 FROM quay.io/keycloak/keycloak:${KC_VERSION}
