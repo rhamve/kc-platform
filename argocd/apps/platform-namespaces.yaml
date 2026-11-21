@@ -1,0 +1,23 @@
+# Child Application: the namespaces the platform needs.
+# sync-wave -10: created before other apps (operators, rings) that deploy into these namespaces.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-namespaces
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rhamve/kc-platform.git          # filled in by scripts/22-bootstrap-gitops.sh
+    targetRevision: main
+    path: platform/namespaces
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

@@ -1,0 +1,41 @@
+# Argo CD Helm values for the kind lab (chart: argo/argo-cd)
+# Small footprint, no SSO yet, HTTP inside the cluster (TLS comes with the Gateway in Phase 3).
+
+global:
+  domain: argocd.localtest.me   # used later for the Gateway route (Phase 3)
+
+configs:
+  params:
+    # Serve plain HTTP: we reach it via kubectl port-forward now, via the Gateway (which terminates TLS) later
+    server.insecure: true
+  cm:
+    # How often Argo CD checks Git for changes (default 180s) – faster feedback in the lab
+    timeout.reconciliation: 60s
+
+# Not needed in the lab
+dex:
+  enabled: false          # SSO for Argo CD itself – could later point at Keycloak (nice exercise)
+notifications:
+  enabled: false
+
+# Kept small so Argo CD + Keycloak + PostgreSQL fit in Docker Desktop's memory
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 1Gi }
+server:
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { memory: 256Mi }
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { memory: 512Mi }
+applicationSet:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits:   { memory: 256Mi }
+redis:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits:   { memory: 256Mi }

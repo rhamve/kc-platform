@@ -1,0 +1,9 @@
+# Namespaces managed by Argo CD (Phase 2b).
+# ring0 = first ring: its own Keycloak Operator, PostgreSQL and Keycloak pods (Phase 2c/2d).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ring0
+  labels:
+    app.kubernetes.io/part-of: kc-platform
+    kc-platform/ring: "0"

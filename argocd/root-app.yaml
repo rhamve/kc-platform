@@ -1,0 +1,23 @@
+# Root Application ("app of apps").
+# Applied ONCE by scripts/22-bootstrap-gitops.sh. From then on Argo CD reads argocd/apps/ from Git and creates
+# every child Application it finds there – adding a platform component = adding a file to argocd/apps/.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io   # deleting root also deletes the child Applications
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rhamve/kc-platform.git          # filled in by scripts/22-bootstrap-gitops.sh
+    targetRevision: main
+    path: argocd/apps
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true                  # file removed from Git → Application removed from the cluster
+      selfHeal: true               # manual change in the cluster → reverted to what Git says
