@@ -1,0 +1,158 @@
+# Phase 1 – Custom Keycloak image
+
+Goal: one versioned, optimized Keycloak image with our login theme, built by GitHub Actions for
+arm64 (your Mac / kind) and amd64 (EC2), pushed to GHCR. This image is the **software** change
+type – everything in it rolls out pod by pod (patch) or blue/green (minor/major).
+
+## Files
+```
+image/
+  Dockerfile                                   # KC_VERSION lives here (single source of truth)
+  themes/kcplatform/login/theme.properties     # parent=keycloak.v2
+  themes/kcplatform/login/messages/messages_en.properties   # "Sign in to KC Platform"
+.github/workflows/keycloak-image.yml           # build + push (see step 1)
+scripts/10-test-image-local.sh                 # local smoke test on http://localhost:8090
+```
+
+What the Dockerfile does:
+- **builder stage:** sets build-time options (`KC_DB=postgres`, health, metrics), copies the theme, runs `kc.sh build`
+- **final stage:** copies the built Keycloak – so pods can start with `start --optimized` (faster, no rebuild at startup)
+
+## Step 1 – put the workflow in place (once)
+Remote tools can't write into `.github`, so the workflow is delivered in `.github-staging`:
+```
+cd ~/Documents/arutperumjothi/learn/kc-platform
+mkdir -p .github/workflows
+mv .github-staging/workflows/keycloak-image.yml .github/workflows/
+rm -rf .github-staging
+chmod +x scripts/*.sh
+```
+
+## Step 2 – test the image locally (and log in to the admin console)
+```
+./scripts/10-test-image-local.sh
+```
+- Admin console: http://localhost:8090/admin → **admin / admin** (local test only)
+- See the theme: **master realm → Realm settings → Themes → Login theme = kcplatform → Save**,
+  then open http://localhost:8090/admin in a private window → the login page says **"Sign in to KC Platform"**
+- Health (management port): `curl http://localhost:9091/health/ready`
+- Stop: `docker rm -f kc-image-test`
+
+`start-dev --db=dev-file` is only for this smoke test; on kind the operator runs `start --optimized` with PostgreSQL.
+
+Why the script passes `--health-enabled=true --metrics-enabled=true`: `start-dev` re-runs the build
+("Updating the configuration…" in the log) using only the options given at start, so the build-time
+options baked into the image are replaced. `start --optimized` (Phase 2) skips that and keeps them.
+Check: the log line `Installed features: [...]` should include `smallrye-health` and `micrometer`.
+
+## Step 3 – push and let GitHub Actions build it
+```
+git add . && git commit -m "Phase 1: custom Keycloak image + CI" && git push
+gh run watch            # or GitHub → Actions → keycloak-image
+```
+Result in GHCR: `ghcr.io/rhamve/kc-platform/keycloak` with tags `26.7.3-<run>`, `sha-<short>`, `latest`.
+
+## Step 4 – pull access for the image (repo is private)
+The package is **private** (it follows the private repo), so anything pulling it needs credentials.
+
+1. GitHub → Settings → Developer settings → Personal access tokens → **Tokens (classic)** →
+   new token, scope **`read:packages`** only, expiry e.g. 90 days. Keep it out of Git.
+2. Mac:
+   ```
+   echo <token> | docker login ghcr.io -u rhamve --password-stdin
+   docker pull ghcr.io/rhamve/kc-platform/keycloak:latest
+   docker image inspect ghcr.io/rhamve/kc-platform/keycloak:latest --format '{{.Architecture}}'   # arm64
+   ```
+3. kind (used from Phase 2) – an image pull secret per namespace that runs Keycloak:
+   ```
+   kubectl create namespace ring0
+   kubectl -n ring0 create secret docker-registry ghcr-pull \
+     --docker-server=ghcr.io --docker-username=rhamve --docker-password=<token>
+   ```
+   (Later: Vault + External Secrets instead of a hand-made secret.)
+
+Alternative: keep the repo private but set only the **package** to Public
+(Packages → keycloak → Package settings → Change visibility). The image contains no secrets – only Keycloak + theme.
+
+Argo CD will also need read access to the private repo (Phase 2): a fine-grained token with
+**Contents: read** on `kc-platform`, added as an Argo CD repository credential.
+
+## Step 5 – try a change (the "software" pipeline)
+Edit `messages_en.properties` (e.g. `loginAccountTitle=Welcome to KC Platform`), commit, push →
+a new image tag appears. In Phase 2 Argo CD deploys new tags; in Phase 8 we roll them out pod by pod.
+
+## Upgrading Keycloak later
+Change `ARG KC_VERSION=` in the Dockerfile (check the newest 26.7.x on quay.io/keycloak/keycloak first).
+Patch (26.7.x → 26.7.y): rolling update. Minor/major (26.7 → 26.8 / 27): blue/green (Phase 8).
+
+## Phase 1b – CSS and logo
+
+### How the parent theme is built (what we extend)
+Parent `keycloak.v2` login theme (Keycloak 26.7.3 source:
+https://github.com/keycloak/keycloak/tree/26.7.3/themes/src/main/resources/theme/keycloak.v2/login):
+- `theme.properties`: `parent=base`, `styles=css/styles.css`, `stylesCommon=` PatternFly v5, `darkMode=true`
+- `resources/css/styles.css` exposes **CSS variables** we can override:
+  `--keycloak-logo-url`, `--keycloak-logo-height`, `--keycloak-logo-width`, `--keycloak-card-top-color`,
+  `--keycloak-bg-logo-url`
+- The logo is drawn by CSS on `<div class="kc-logo-text">` inside the header; the header text comes from
+  the message `loginTitleHtml` (default `{0}` = realm display name)
+
+Rules that keep the parent working:
+- In `styles=` list the **parent's file first**, then ours: `styles=css/styles.css css/kcplatform.css`
+  (Keycloak looks up each file in our theme, then the parent)
+- Override **variables and colours**, don't copy the parent's CSS or templates (they change between versions)
+
+### Files
+```
+themes/kcplatform/login/
+  theme.properties                      parent=keycloak.v2, styles=css/styles.css css/kcplatform.css, darkMode=false
+  messages/messages_en.properties       loginAccountTitle + loginTitleHtml (logo div for every realm)
+  resources/css/kcplatform.css          logo variables, card top colour, PatternFly primary colour, gradient background
+  resources/img/kcplatform-logo.svg     original lab logo (shield + "KC Platform")
+```
+
+### Steps
+1. Test locally:
+   ```
+   ./scripts/10-test-image-local.sh
+   ```
+2. http://localhost:8090/admin → admin / admin → **master → Realm settings → Themes → Login theme = kcplatform** → Save
+3. Private window → http://localhost:8090/admin → expect:
+   - KC Platform logo above the card, green top border on the card
+   - green **Sign In** button and links, gradient background
+   - heading "Welcome to KC Platform"
+4. Tweak colours in `kcplatform.css` → re-run the script (it rebuilds the image) → hard refresh (Cmd+Shift+R)
+5. Commit and push → GitHub Actions builds a new image tag:
+   ```
+   git add image && git commit -m "Phase 1b: login theme CSS and logo" && git push && gh run watch
+   ```
+
+Tip – browser DevTools (Cmd+Option+I) → Elements → select the header or button → see which CSS variable or class
+applies, then override it in `kcplatform.css`.
+
+### Troubleshooting
+| Symptom | Check |
+|---|---|
+| Page unstyled (plain HTML) | `styles=` must still include `css/styles.css` before `css/kcplatform.css` |
+| Logo missing, text "KC PLATFORM" shown | SVG path: `resources/img/kcplatform-logo.svg`; URL in CSS is `../img/...` |
+| Old look after rebuild | Browser cache – hard refresh or private window |
+| Changes don't appear at all | Realm's Login theme still `keycloak.v2` – select `kcplatform` |
+| `kcplatform` missing from the Login theme list, no errors in the log | File permissions: Keycloak runs as `keycloak` and can't read root-owned `600` files – `COPY --chown=keycloak:root` (see [lessons learned](../docs/lessons-learned.md)) |
+
+## Dependabot (keeps GitHub Actions versions current)
+`dependabot.yml` is delivered in `.github-staging` (remote tools can't write into `.github`):
+```
+mv .github-staging/dependabot.yml .github/dependabot.yml && rm -rf .github-staging
+git add .github/dependabot.yml && git commit -m "ci: dependabot for GitHub Actions" && git push
+```
+Every Monday it opens one grouped PR bumping action versions (clears the Node.js 20 warnings). The PR runs the
+image workflow in build-only mode; merge when green. The Keycloak version is bumped by hand (`ARG KC_VERSION`).
+
+## Troubleshooting
+| Symptom | Check |
+|---|---|
+| `kcplatform` not in the Login theme list | Theme folder path must be `themes/kcplatform/login/`; rebuild the image |
+| Container exits at start | `docker logs kc-image-test` |
+| Workflow fails at push with 403 | Repo → Settings → Actions → General → Workflow permissions → **Read and write** |
+| kind can't pull the image later (`ImagePullBackOff`) | `ghcr-pull` secret in the namespace, or make the package Public |
+| Health check never ready, but log says "started" | Health not enabled – `Installed features` must list `smallrye-health` |

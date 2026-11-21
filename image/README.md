@@ -137,6 +137,7 @@ applies, then override it in `kcplatform.css`.
 | Logo missing, text "KC PLATFORM" shown | SVG path: `resources/img/kcplatform-logo.svg`; URL in CSS is `../img/...` |
 | Old look after rebuild | Browser cache – hard refresh or private window |
 | Changes don't appear at all | Realm's Login theme still `keycloak.v2` – select `kcplatform` |
+| `kcplatform` missing from the Login theme list, no errors in the log | File permissions: Keycloak runs as `keycloak` and can't read root-owned `600` files – `COPY --chown=keycloak:root` (see [lessons learned](../docs/lessons-learned.md)) |
 
 ## Dependabot (keeps GitHub Actions versions current)
 `dependabot.yml` is delivered in `.github-staging` (remote tools can't write into `.github`):

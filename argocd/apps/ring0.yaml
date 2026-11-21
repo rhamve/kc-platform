@@ -1,0 +1,27 @@
+# ring0 – PostgreSQL + Keycloak from the keycloak-ring Helm chart with ring0's values.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ring0
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"     # after operators (-5, -4)
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/background
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rhamve/kc-platform.git
+    targetRevision: main
+    path: charts/keycloak-ring
+    helm:
+      releaseName: ring0
+      valueFiles:
+        - values-ring0.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ring0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

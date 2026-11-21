@@ -1,0 +1,6 @@
+apiVersion: v2
+name: keycloak-ring
+description: One ring of the kc-platform – a PostgreSQL cluster (CloudNativePG) and a Keycloak cluster (Keycloak Operator)
+type: application
+version: 0.1.0          # version of this chart
+appVersion: "26.7.3"    # Keycloak version it is built for

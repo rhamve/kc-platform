@@ -1,0 +1,22 @@
+# PostgreSQL for this ring, run by CloudNativePG.
+# CNPG creates: pods {{ .Values.database.name }}-1..n, services {{ .Values.database.name }}-rw / -ro / -r,
+# and secret {{ .Values.database.name }}-app (username, password, host, uri) for the application user.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: {{ .Values.database.name }}
+  labels:
+    app.kubernetes.io/part-of: kc-platform
+    kc-platform/ring: {{ .Values.ring | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"      # database before Keycloak
+spec:
+  instances: {{ .Values.database.instances }}
+  storage:
+    size: {{ .Values.database.storage }}
+  bootstrap:
+    initdb:
+      database: {{ .Values.database.database }}
+      owner: {{ .Values.database.owner }}
+  resources:
+    {{- toYaml .Values.database.resources | nindent 4 }}

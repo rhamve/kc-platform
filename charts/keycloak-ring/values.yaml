@@ -1,0 +1,31 @@
+# Defaults for one ring. Each ring overrides what differs in its own values file (values-ring0.yaml, ...).
+
+ring: "0"
+
+database:
+  name: kc-db               # CNPG Cluster name → services kc-db-rw (writer), kc-db-ro; secret kc-db-app
+  instances: 1              # 1 = primary only; 2+ adds streaming replicas (Phase 10)
+  storage: 1Gi
+  database: keycloak
+  owner: keycloak
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { memory: 512Mi }
+
+keycloak:
+  name: keycloak
+  image:
+    repository: ghcr.io/rhamve/kc-platform/keycloak
+    tag: latest             # pin to an immutable tag per ring, e.g. 26.7.3-7 (see values-ring0.yaml)
+  instances: 2
+  startOptimized: true      # image was built with kc.sh build – skip the rebuild at start
+  updateStrategy: Auto      # rolling update when compatible, recreate otherwise (Phase 8)
+  # No TLS inside the cluster yet: the Gateway terminates TLS in Phase 3
+  httpEnabled: true
+  hostname:
+    hostname: ""            # empty + strict false = use the request's host (port-forward in 2e)
+    strict: false
+  resources:
+    requests: { cpu: 200m, memory: 768Mi }
+    limits:   { memory: 1536Mi }
+  additionalOptions: []     # extra Keycloak options: [{ name: log-level, value: INFO }]

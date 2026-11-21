@@ -1,0 +1,52 @@
+# Keycloak for this ring, run by the ring's Keycloak Operator.
+# The operator creates: StatefulSet {{ .Values.keycloak.name }}, services {{ .Values.keycloak.name }}-service
+# and {{ .Values.keycloak.name }}-discovery, and secret {{ .Values.keycloak.name }}-initial-admin.
+apiVersion: k8s.keycloak.org/v2beta1
+kind: Keycloak
+metadata:
+  name: {{ .Values.keycloak.name }}
+  labels:
+    app.kubernetes.io/part-of: kc-platform
+    kc-platform/ring: {{ .Values.ring | quote }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"      # after the database
+spec:
+  instances: {{ .Values.keycloak.instances }}
+  image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
+  startOptimized: {{ .Values.keycloak.startOptimized }}
+  update:
+    strategy: {{ .Values.keycloak.updateStrategy }}
+  db:
+    vendor: postgres
+    host: {{ .Values.database.name }}-rw
+    database: {{ .Values.database.database }}
+    usernameSecret:
+      name: {{ .Values.database.name }}-app
+      key: username
+    passwordSecret:
+      name: {{ .Values.database.name }}-app
+      key: password
+  http:
+    httpEnabled: {{ .Values.keycloak.httpEnabled }}
+  hostname:
+    {{- with .Values.keycloak.hostname.hostname }}
+    hostname: {{ . }}
+    {{- end }}
+    strict: {{ .Values.keycloak.hostname.strict }}
+  ingress:
+    enabled: false                        # no Ingress controller; Gateway API routes come in Phase 3
+  resources:
+    {{- toYaml .Values.keycloak.resources | nindent 4 }}
+  scheduling:
+    topologySpreadConstraints:            # one pod per zone (az-a / az-b) when possible
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: keycloak
+            app.kubernetes.io/instance: {{ .Values.keycloak.name }}
+  {{- with .Values.keycloak.additionalOptions }}
+  additionalOptions:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

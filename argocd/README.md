@@ -4,8 +4,8 @@
 |---|---|---|
 | **2a** | Install Argo CD, open the UI, log in | ✅ done (server v3.5.2) |
 | **2b** | App-of-apps: one root Application → everything else from Git | ✅ done (root Synced/Healthy) |
-| **2c** | Operators: CloudNativePG + Keycloak Operator (ring0) | ← this step |
-| 2d | `keycloak-ring` Helm chart: PostgreSQL + Keycloak (GHCR image) | |
+| **2c** | Operators: CloudNativePG + Keycloak Operator (ring0) | ✅ done (both operators Running) |
+| **2d** | `keycloak-ring` Helm chart: PostgreSQL + Keycloak (GHCR image) | ← this step |
 | 2e | Verify: status, cluster view, admin login | |
 
 ## 2a – Install Argo CD
@@ -198,6 +198,91 @@ platform/operators/keycloak/ring0/            overlay: namespace ring0, RoleBind
 - **CloudNativePG:** change `targetRevision` in `operator-cnpg.yaml`, push.
 - **Keycloak Operator:** re-vendor the files for the new version (same split), push the CRDs first, then each ring's
   operator one ring at a time. Keep the operator version equal to the Keycloak image version.
+
+## 2d – ring0: PostgreSQL + Keycloak (Helm chart)
+
+The chart `charts/keycloak-ring` describes **one ring**. It contains no pods itself – only two custom resources,
+and the operators from 2c turn them into running software:
+
+```
+Argo CD app "ring0" ──helm template (values-ring0.yaml)──►
+   Cluster  kc-db     (wave 0) ──CloudNativePG──► pod kc-db-1, services kc-db-rw/-ro, secret kc-db-app
+   Keycloak keycloak  (wave 1) ──Keycloak Operator──► StatefulSet keycloak (2 pods), keycloak-service,
+                                                     secret keycloak-initial-admin
+   Keycloak reads its DB user/password from secret kc-db-app – no password is ever written in Git
+```
+
+### Files
+```
+charts/keycloak-ring/Chart.yaml
+charts/keycloak-ring/values.yaml                  defaults for any ring
+charts/keycloak-ring/values-ring0.yaml            ring0: image tag, instances
+charts/keycloak-ring/templates/postgres-cluster.yaml
+charts/keycloak-ring/templates/keycloak.yaml      your GHCR image, startOptimized, update.strategy Auto,
+                                                  HTTP only (TLS at the Gateway in Phase 3), spread over az-a/az-b
+argocd/apps/ring0.yaml                            Argo CD app: chart + values-ring0.yaml → namespace ring0
+```
+
+### Steps
+1. **Pick the image tag.** GitHub → repo `kc-platform` → **Packages** → `kc-platform/keycloak` → newest tag like
+   `26.7.3-7` (the build that contains the Phase 1b theme fix). Put it in `charts/keycloak-ring/values-ring0.yaml`:
+   ```yaml
+   keycloak:
+     image:
+       tag: 26.7.3-7     # your tag
+   ```
+   (`latest` works for a first try, but a pinned tag is what makes rollouts visible and repeatable.)
+2. **Image must be pullable without login:** `docker logout ghcr.io && docker pull ghcr.io/rhamve/kc-platform/keycloak:<tag>`.
+   If denied → Packages → keycloak → Package settings → **Change visibility → Public**.
+3. Commit and push:
+   ```
+   git add charts argocd/apps && git commit -m "Phase 2d: ring0 PostgreSQL + Keycloak" && git push
+   argocd app get root --refresh
+   ```
+4. Watch it come up (first start takes 1–3 minutes: image pull, DB init, Keycloak schema creation):
+   ```
+   kubectl -n ring0 get cluster,keycloak,pods -w
+   ```
+   Expected end state:
+   ```
+   kc-db-1                    1/1 Running      (PostgreSQL)
+   keycloak-0, keycloak-1     1/1 Running      (Keycloak)
+   keycloak-operator-...      1/1 Running
+   ```
+
+## 2e – Verify
+```
+# 1. Keycloak resource status (operator's view)
+kubectl -n ring0 get keycloak keycloak -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.message}{"\n"}{end}'
+#    expect Ready=True, HasErrors=False
+
+# 2. Both pods formed ONE cache cluster
+kubectl -n ring0 logs keycloak-0 | grep -i "cluster view"
+#    expect a view listing 2 members (keycloak-0 and keycloak-1)
+
+# 3. Database
+kubectl -n ring0 get cluster kc-db          # STATUS: Cluster in healthy state
+
+# 4. Admin console through a port-forward (terminal 1, keep open)
+kubectl -n ring0 port-forward svc/keycloak-service 8095:8080
+
+# 5. Admin login (terminal 2): the operator generated the first admin
+kubectl -n ring0 get secret keycloak-initial-admin -o jsonpath='{.data.username}' | base64 -d; echo
+kubectl -n ring0 get secret keycloak-initial-admin -o jsonpath='{.data.password}' | base64 -d; echo
+```
+Browse http://localhost:8095/admin → log in → **this is your image on Kubernetes**.
+Set master → Realm settings → Themes → Login theme `kcplatform` and open http://localhost:8095/admin in a private
+window: the KC Platform login page (Phase 4 will set the theme from Git instead).
+
+### Troubleshooting (2d/2e)
+| Symptom | Check |
+|---|---|
+| `ImagePullBackOff` on keycloak-0 | Tag typo, or package not public – step 2 |
+| keycloak pods `CrashLoopBackOff` right after start | DB not ready yet – it retries; `kubectl -n ring0 logs keycloak-0` → `Connection refused` to kc-db-rw resolves itself in a minute |
+| `kc-db-1` stays `Pending` | `kubectl -n ring0 describe pod kc-db-1` → storage (PVC) or memory |
+| Keycloak resource `HasErrors=True` | `kubectl -n ring0 describe keycloak keycloak` and operator log: `kubectl -n ring0 logs deploy/keycloak-operator` |
+| Log warns "build time options have values that differ" | An option in the Keycloak resource is a build option – bake it into the image instead |
+| Pods `Pending` (Insufficient memory) | Docker Desktop memory; stop other labs; or `instances: 1` in values-ring0.yaml |
 
 ### What got installed
 | Pod | Role |

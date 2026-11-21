@@ -49,7 +49,8 @@ Related labs (left untouched – use them for MFA / TOTP and other feature exper
 - [x] **0. Repo + kind cluster** – steps below
 - [x] **1. Custom Keycloak image** – Dockerfile + theme + GitHub Actions (multi-arch → GHCR) – steps in [`image/README.md`](image/README.md)
   (first build ✓ in 3m; remaining check: anonymous `docker pull` of the image)
-- [ ] **2. GitOps base** – Argo CD, app-of-apps, Keycloak Operator, CloudNativePG, ring0 Helm chart
+- [x] **1b. Login theme CSS + logo** – verified locally (`Welcome to KC Platform`, logo, `kcplatform.css`)
+- [ ] **2. GitOps base** – Argo CD, app-of-apps, Keycloak Operator, CloudNativePG, ring0 Helm chart – steps in [`argocd/README.md`](argocd/README.md)
 - [ ] **3. Traffic** – Envoy Gateway, login/admin hostnames, TLS
 - [ ] **3b. Public access** – Cloudflare Tunnel (`cloudflared` in the cluster) + Cloudflare Access on the admin hostname
 - [ ] **4. Config as code** – realm in Git, keycloak-config-cli Job
@@ -151,11 +152,12 @@ kind/                 kind cluster definition
 scripts/              bootstrap helpers
 image/                custom Keycloak image (Phase 1)
 .github/workflows/    CI pipelines (Phase 1)
-argocd/               Argo CD applications (Phase 2)
+argocd/               Argo CD install values, root app, child apps (argocd/apps/)
+platform/             manifests deployed by the child apps (namespaces, ...)
 charts/keycloak-ring/ Helm chart for one ring (Phase 2)
 config/realms/        realm configuration as code (Phase 4)
 apps/bff/             Spring Boot BFF (Phase 6)
-docs/                 decisions, runbooks
+docs/                 decisions, runbooks, lessons learned (docs/lessons-learned.md)
 ```
 
 ## References

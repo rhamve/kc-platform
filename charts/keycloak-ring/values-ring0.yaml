@@ -1,0 +1,9 @@
+# ring0 – first ring (canary)
+ring: "0"
+
+keycloak:
+  image:
+    # Pin to the tag GitHub Actions built (GitHub repo → Packages → keycloak, or `gh run list`).
+    # Changing this tag and pushing = a software rollout to ring0.
+    tag: latest
+  instances: 2
