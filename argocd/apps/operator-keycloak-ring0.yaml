@@ -1,0 +1,23 @@
+# Keycloak Operator for ring0 – runs in ring0, watches only ring0.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: operator-keycloak-ring0
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-4"   # after the CRDs (-5)
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/background
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rhamve/kc-platform.git
+    targetRevision: main
+    path: platform/operators/keycloak/ring0
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ring0
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

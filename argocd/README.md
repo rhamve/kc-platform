@@ -3,8 +3,8 @@
 | Step | What | Status |
 |---|---|---|
 | **2a** | Install Argo CD, open the UI, log in | ✅ done (server v3.5.2) |
-| **2b** | App-of-apps: one root Application → everything else from Git | ← this step |
-| 2c | Operators: CloudNativePG + Keycloak Operator (ring0) | |
+| **2b** | App-of-apps: one root Application → everything else from Git | ✅ done (root Synced/Healthy) |
+| **2c** | Operators: CloudNativePG + Keycloak Operator (ring0) | ← this step |
 | 2d | `keycloak-ring` Helm chart: PostgreSQL + Keycloak (GHCR image) | |
 | 2e | Verify: status, cluster view, admin login | |
 
@@ -131,6 +131,73 @@ namespace, never in Git. Public repo: no token needed.
 | `platform-namespaces` missing | Was `argocd/apps/` pushed? `argocd app get root` → Conditions |
 | **OutOfSync** that never syncs | `argocd app get <app>` → sync errors; `argocd app sync <app>` to force |
 | Changes on GitHub not picked up | Polling every 60s – or `argocd app get root --refresh` |
+
+## 2c – Operators
+
+An **operator** is a controller that knows how to run one kind of software. You declare *what* you want
+(a `Cluster` for PostgreSQL, a `Keycloak` for Keycloak) and the operator creates and maintains the pods,
+services, secrets and upgrades.
+
+| Child app | Source | Installs | Scope |
+|---|---|---|---|
+| `operator-cnpg` | CloudNativePG Helm chart **0.29.2** (operator 1.30.2) | PostgreSQL operator in `cnpg-system` | whole cluster, watches all namespaces |
+| `operator-keycloak-cluster` | `platform/operators/keycloak/cluster` | Keycloak CRDs + ClusterRoles (26.7.3) | cluster-wide, **once** for all rings |
+| `operator-keycloak-ring0` | `platform/operators/keycloak/ring0` | Keycloak Operator 26.7.3 in `ring0` | **ring0 only** (one operator per ring) |
+
+Sync order (sync waves): namespaces `-10` → CRDs + CNPG `-5` → ring0 operator `-4`.
+
+### Why the Keycloak Operator is split in two
+Upstream ships one file (`kubernetes.yml`) meant for a single namespace called `keycloak`. For rings we need:
+- **cluster-scoped** pieces (CRDs, ClusterRoles) exactly **once** – two rings owning the same CRD would fight
+- **namespaced** pieces (ServiceAccount, RoleBindings, Deployment) **per ring**, via a Kustomize overlay that sets
+  the namespace, and a per-ring **ClusterRoleBinding** (`...-binding-ring0`) – upstream's points at namespace `keycloak`
+
+The files are **vendored** (copied into this repo, pinned to 26.7.3) – reviewable, and an upgrade is a visible Git diff.
+
+### Files
+```
+argocd/apps/operator-cnpg.yaml                Helm chart app (ServerSideApply: CRDs are large)
+argocd/apps/operator-keycloak-cluster.yaml    prune: false – never auto-delete CRDs (it would delete every Keycloak)
+argocd/apps/operator-keycloak-ring0.yaml
+platform/operators/keycloak/cluster/          4 CRDs + clusterroles.yaml + kustomization.yaml
+platform/operators/keycloak/namespaced/       operator.yaml (SA, RoleBindings, Service, Deployment)
+platform/operators/keycloak/ring0/            overlay: namespace ring0, RoleBinding subjects, ClusterRoleBinding
+```
+
+### Steps
+1. Commit and push – that's the whole deployment:
+   ```
+   git add argocd/apps platform && git commit -m "Phase 2c: CloudNativePG + Keycloak operators" && git push
+   ```
+2. Watch Argo CD pick it up (≤ 60s, or force it):
+   ```
+   argocd app get root --refresh
+   kubectl -n argocd get applications -w        # Ctrl+C when all Synced/Healthy
+   ```
+3. Check:
+   ```
+   kubectl get crd | grep -E "keycloak|cnpg"                 # 4 keycloak CRDs + cnpg CRDs (clusters, backups, ...)
+   kubectl -n cnpg-system get pods                           # cnpg-cloudnative-pg-...  Running
+   kubectl -n ring0 get pods                                 # keycloak-operator-...    Running
+   kubectl -n ring0 logs deploy/keycloak-operator | tail -20 # operator started, watching ring0
+   ```
+
+### Try it
+- In the UI, open `operator-keycloak-ring0` → you see the Deployment, ServiceAccount, RoleBindings as a tree.
+- `kubectl api-resources | grep -E "keycloak|cnpg"` – the new resource types the operators added to Kubernetes.
+
+### Troubleshooting (2c)
+| Symptom | Check |
+|---|---|
+| `operator-keycloak-cluster` **SyncFailed**: "metadata.annotations: Too long" | `ServerSideApply=true` missing in the app |
+| `operator-keycloak-ring0` **Degraded**, pod `CrashLoopBackOff` | `kubectl -n ring0 logs deploy/keycloak-operator` – usually RBAC (`forbidden`) → check the ClusterRoleBinding subject is `ring0` |
+| `operator-cnpg` **Unknown**, "chart not found" | Chart version typo; list versions: `helm search repo cnpg/cloudnative-pg --versions` (after `helm repo add cnpg https://cloudnative-pg.github.io/charts`) |
+| Pods `Pending` | Memory – stop other labs; `kubectl describe pod <name>` → Events |
+
+### Upgrading the operators later
+- **CloudNativePG:** change `targetRevision` in `operator-cnpg.yaml`, push.
+- **Keycloak Operator:** re-vendor the files for the new version (same split), push the CRDs first, then each ring's
+  operator one ring at a time. Keep the operator version equal to the Keycloak image version.
 
 ### What got installed
 | Pod | Role |

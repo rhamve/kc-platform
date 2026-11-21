@@ -1,0 +1,26 @@
+# CloudNativePG operator (PostgreSQL clusters on Kubernetes) – one per Kubernetes cluster, watches all namespaces.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: operator-cnpg
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/background
+spec:
+  project: default
+  source:
+    repoURL: https://cloudnative-pg.github.io/charts
+    chart: cloudnative-pg
+    targetRevision: 0.29.2          # operator 1.30.2
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cnpg-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true        # CRDs are too large for client-side apply

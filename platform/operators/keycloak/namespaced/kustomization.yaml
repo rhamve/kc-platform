@@ -1,0 +1,6 @@
+# Keycloak Operator 26.7.3 – per-ring parts: ServiceAccount, RoleBindings, Service, Deployment.
+# Used by each ring overlay (ring0, later ring1, blue/green ...), which sets the namespace.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - operator.yaml

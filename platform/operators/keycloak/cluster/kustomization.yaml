@@ -1,0 +1,10 @@
+# Keycloak Operator 26.7.3 – cluster-scoped parts, installed ONCE for all rings:
+# CRDs (the Keycloak / KeycloakRealmImport / client resource types) and the ClusterRoles the operators use.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - crd-keycloaks.yaml
+  - crd-keycloakrealmimports.yaml
+  - crd-keycloakoidcclients.yaml
+  - crd-keycloaksamlclients.yaml
+  - clusterroles.yaml

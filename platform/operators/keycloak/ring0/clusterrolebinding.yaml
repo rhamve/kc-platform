@@ -1,0 +1,17 @@
+# Upstream binds a ServiceAccount in namespace "keycloak". ClusterRoleBindings are cluster-wide,
+# so each ring gets its own, named per ring and pointing at that ring's ServiceAccount.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: keycloak-operator-clusterrole-binding-ring0
+  labels:
+    app.kubernetes.io/name: keycloak-operator
+    kc-platform/ring: "0"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: keycloak-operator-clusterrole
+subjects:
+  - kind: ServiceAccount
+    name: keycloak-operator
+    namespace: ring0

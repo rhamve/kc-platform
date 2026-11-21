@@ -1,0 +1,16 @@
+# Keycloak Operator for ring0: runs in namespace ring0 and watches ONLY ring0 (JOSDK_WATCH_CURRENT).
+# Upgrading the operator is then done ring by ring.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ring0
+resources:
+  - ../namespaced
+  - clusterrolebinding.yaml
+patches:
+  # RoleBindings: point the ServiceAccount subject at this ring's namespace explicitly
+  - target:
+      kind: RoleBinding
+    patch: |-
+      - op: add
+        path: /subjects/0/namespace
+        value: ring0

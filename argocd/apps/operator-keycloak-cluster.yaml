@@ -1,0 +1,24 @@
+# Keycloak Operator – cluster-scoped parts (CRDs + ClusterRoles), shared by all rings.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: operator-keycloak-cluster
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-5"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io/background
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rhamve/kc-platform.git
+    targetRevision: main
+    path: platform/operators/keycloak/cluster
+  destination:
+    server: https://kubernetes.default.svc
+  syncPolicy:
+    automated:
+      prune: false                  # never auto-delete CRDs: that would delete every Keycloak resource
+      selfHeal: true
+    syncOptions:
+      - ServerSideApply=true        # CRDs are ~0.5 MB – too large for client-side apply
