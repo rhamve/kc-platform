@@ -157,7 +157,7 @@ platform/             manifests deployed by the child apps (namespaces, ...)
 charts/keycloak-ring/ Helm chart for one ring (Phase 2)
 config/realms/        realm configuration as code (Phase 4)
 apps/bff/             Spring Boot BFF (Phase 6)
-docs/                 decisions, runbooks, lessons learned (docs/lessons-learned.md)
+docs/                 decisions, runbooks, learning log of every problem + fix (docs/learning.md)
 ```
 
 ## References
